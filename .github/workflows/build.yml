@@ -1,0 +1,65 @@
+name: Driver Pro APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Android project
+        shell: bash
+        run: |
+          set -e
+          if [ -f app/build.gradle ] || [ -f app/build.gradle.kts ]; then
+            PROJECT_DIR="$GITHUB_WORKSPACE"
+          else
+            ZIP_FILE=$(find . -maxdepth 2 -type f -iname '*.zip' | head -n 1)
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: Upload the Driver Pro ZIP package to the repository root."
+              exit 1
+            fi
+            mkdir -p extracted
+            unzip -o "$ZIP_FILE" -d extracted
+            APP_GRADLE=$(find extracted -type f \( -path '*/app/build.gradle' -o -path '*/app/build.gradle.kts' \) | head -n 1)
+            if [ -z "$APP_GRADLE" ]; then
+              echo "ERROR: ZIP does not contain app/build.gradle or app/build.gradle.kts."
+              exit 1
+            fi
+            PROJECT_DIR=$(dirname "$(dirname "$APP_GRADLE")")
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project: $PROJECT_DIR"
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Driver-Pro-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
